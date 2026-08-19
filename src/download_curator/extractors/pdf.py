@@ -61,25 +61,120 @@ class PDFExtractor(BaseExtractor):
                         metadata.year = year_val
                         metadata.date = f"{year_val}-{month_val}-{day_val}"
 
-            # 2. Extract text from first 2 pages
-            extracted_text = ""
-            for i in range(min(2, num_pages)):
+            # 2. Extract text from first 8 pages (front-matter inspection for books, papers, notes)
+            pages_text: List[str] = []
+            for i in range(min(8, num_pages)):
                 try:
                     page_text = reader.pages[i].extract_text() or ""
-                    extracted_text += page_text + "\n"
+                    pages_text.append(page_text)
                 except Exception:
                     pass
 
-            clean_text = re.sub(r"\s+", " ", extracted_text).strip()
+            full_front_matter = "\n---PAGE---\n".join(pages_text)
+            extracted_text = "\n".join(pages_text[:2])
+            clean_text = re.sub(r"\s+", " ", full_front_matter).strip()
             metadata.excerpt = clean_text[:1200] if clean_text else None
 
-            # 3. Course and Lecture Notes Detection
-            course_match = re.search(r"\b([A-Z]{2,5}\s*\d{2,4}[A-Za-z]?)\b(?::|\s+-|\s+)", clean_text[:800])
-            lecture_match = re.search(
-                r"\b(Lecture|Class|Discussion|Recitation|Handout|Problem Set|HW|Homework)\s*(?:#|No\.?|Number)?\s*(\d+)?(?::|-)?\s*([^\n\*†\n]+)",
-                extracted_text[:1000],
+            # 3. Book / Monograph Detection (ISBN, Library of Congress CIP, Copyright Page, Title Page)
+            isbn_match = re.search(r"\b(97[89][-\s]?(?:\d[-\s]?){9}\d)\b", file_path.name + " " + full_front_matter)
+            cip_match = re.search(
+                r"Library of Congress Cataloging[- ]in[- ]Publication Data\s*\n+([^\n]+)\n+([^\n]+)",
+                full_front_matter,
                 re.I,
             )
+            cp_year_match = re.search(r"(?:©|c©|\(c\)|copyright)\s*(19\d{2}|20\d{2})", full_front_matter, re.I)
+            if cp_year_match:
+                metadata.year = int(cp_year_match.group(1))
+                metadata.date = str(metadata.year)
+
+            if isbn_match or cip_match or num_pages > 80:
+                cip_author = None
+                cip_title = None
+                if cip_match:
+                    raw_a = cip_match.group(1).strip()
+                    raw_t = cip_match.group(2).strip()
+                    a_clean = re.sub(r",\s*\d{4}.*$", "", raw_a)
+                    a_clean = re.sub(r"\(.*?\)", "", a_clean).strip()
+                    if "," in a_clean:
+                        parts = [p.strip() for p in a_clean.split(",", 1)]
+                        cip_author = f"{parts[1]} {parts[0]}".strip()
+                    else:
+                        cip_author = a_clean
+                    cip_title = raw_t.rstrip(".").strip()
+
+                if not cip_author:
+                    affil_match = re.search(
+                        r"([A-Z][a-z]+(?:\s+[A-Z]\.?)?(?:\s+[A-Z][a-z]+)+)\s*\n\s*(?:Department of|School of|Faculty of|University of|[A-Z][a-z]+ University)",
+                        full_front_matter,
+                    )
+                    if affil_match:
+                        cip_author = affil_match.group(1).strip()
+
+                # Find clean Title Page lines from front matter
+                cover_title = None
+                for p_txt in pages_text[:5]:
+                    raw_lines = [l.strip() for l in p_txt.split("\n") if l.strip()]
+                    if not (1 <= len(raw_lines) <= 8):
+                        continue
+                    if any(re.search(r"(series in|advisors:|editorial board|table of contents|^contents\b|for \w+…|who was very eager)", l, re.I) for l in raw_lines[:2]):
+                        continue
+                    clean_lines = [
+                        l for l in raw_lines
+                        if not re.search(r"(isbn|doi:|http|subject classification|department of|university|all rights|springer series|advisors:|editorial board|\b\d{3}\b)", l, re.I)
+                    ]
+                    if clean_lines:
+                        non_pub_lines = [
+                            l for l in clean_lines
+                            if not re.search(r"(springer|wiley|cambridge|oxford|new york|berlin|heidelberg|london|paris|tokyo|boston|singapore|publish|press)", l, re.I)
+                        ]
+                        if cip_author:
+                            author_tokens = set(re.findall(r"\w+", cip_author.lower()))
+                            t_lines = [
+                                l for l in non_pub_lines
+                                if not (set(re.findall(r"\w+", l.lower())) & author_tokens and len(set(re.findall(r"\w+", l.lower())) & author_tokens) >= 2)
+                            ]
+                            if t_lines:
+                                cover_title = " ".join(t_lines)
+                                break
+                        elif len(non_pub_lines) >= 2:
+                            cover_title = " ".join(non_pub_lines[1:])
+                            cip_author = non_pub_lines[0]
+                            break
+
+                if cip_author or cover_title or isbn_match:
+                    metadata.raw_metadata["is_book"] = True
+                    if isbn_match:
+                        metadata.raw_metadata["isbn"] = isbn_match.group(1)
+
+                    if cip_author:
+                        metadata.authors = [cip_author]
+
+                    if cover_title:
+                        metadata.title = cover_title
+                    elif cip_title:
+                        metadata.title = cip_title
+
+                    # Build high-quality excerpt for AI
+                    excerpt_parts = []
+                    if cover_title and cip_author:
+                        excerpt_parts.append(f"[Title Page]:\n{cip_author}\n{cover_title}")
+                    if cip_match:
+                        excerpt_parts.append("[Library of Congress CIP]:\n" + cip_match.group(0))
+                    if excerpt_parts:
+                        metadata.excerpt = "\n\n".join(excerpt_parts)
+
+            # 4. Course and Lecture Notes Detection (only if not already confirmed as a book monograph)
+            if not metadata.raw_metadata.get("is_book"):
+                course_match = re.search(r"\b([A-Z]{2,5}\s*\d{2,4}[A-Za-z]?)\b(?::|\s+-|\s+)", clean_text[:800])
+                # Filter corporate/metadata False positives
+                if course_match and course_match.group(1).replace(" ", "").upper() in {"AG", "GMBH", "INC", "LLC", "LTD", "CORP", "ISBN", "PAGE", "VOL", "CHAP", "SEC", "DOC", "PDF"}:
+                    course_match = None
+
+                lecture_match = re.search(
+                    r"\b(Lecture|Class|Discussion|Recitation|Handout|Problem Set|HW|Homework)\s*(?:#|No\.?|Number)?\s*(\d+)?(?::|-)?\s*([^\n\*†\n]+)",
+                    extracted_text[:1000],
+                    re.I,
+                )
 
             if course_match or (lecture_match and lecture_match.group(2)):
                 raw_course = course_match.group(1).replace(" ", "").upper() if course_match else ""

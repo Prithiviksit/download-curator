@@ -63,13 +63,14 @@ You MUST output ONLY a valid JSON object matching this schema:
 
 
 def _build_user_prompt(file_path: Path, metadata: ExtractedMetadata) -> str:
+    year_str = str(metadata.year) if metadata.year else (metadata.date or "N/A")
     return (
         f"Original Filename: {file_path.name}\n"
         f"File Extension: {file_path.suffix}\n"
         f"Detected Type: {metadata.file_type}\n"
         f"Title: {metadata.title or 'N/A'}\n"
         f"Authors: {', '.join(metadata.authors) if metadata.authors else 'N/A'}\n"
-        f"Year/Date: {metadata.date or metadata.year or 'N/A'}\n"
+        f"Year/Date: {year_str}\n"
         f"Merchant/Institution: {metadata.merchant_or_institution or 'N/A'}\n"
         f"Application/Dataset Name: {metadata.application_name or metadata.dataset_name or 'N/A'}\n"
         f"Content Excerpt:\n{metadata.excerpt or 'N/A'}\n"

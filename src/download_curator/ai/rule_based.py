@@ -25,14 +25,22 @@ def clean_words_for_title(text: str, max_words: int = 7) -> str:
     return "_".join(selected_words) if selected_words else "Document"
 
 
+COMPOUND_PREFIXES = {
+    "le", "la", "de", "del", "della", "van", "von", "der", "du", "da", "di", "dos", "das", "al", "el", "ben", "ibn"
+}
+
+
 def extract_last_name(author_str: str) -> str:
-    """Extract a clean last name from an author string."""
+    """Extract a clean last name from an author string, preserving compound surnames."""
     cleaned = re.sub(r"[^\w\s-]", "", author_str).strip()
     parts = cleaned.split()
     if not parts:
         return "Author"
-    # If author is formatted as "LastName, FirstName"
-    # or "FirstName LastName" -> take the last token
+
+    # Check if there is a compound prefix (e.g. "Le Cam", "Van Rossum", "De Morgan")
+    if len(parts) >= 2 and parts[-2].lower() in COMPOUND_PREFIXES:
+        return f"{parts[-2].capitalize()}_{parts[-1].capitalize()}"
+
     last = parts[-1].capitalize()
     return last if len(last) > 1 else parts[0].capitalize()
 
@@ -117,6 +125,22 @@ class RuleBasedProvider(BaseAIProvider):
                     destination=dest,
                     confidence=0.94,
                     reason=f"Identified course lecture notes for {course_str or 'course'} ({unit_str}) by {authors_str}",
+                )
+
+            # Book / Monograph check
+            if raw_meta.get("is_book") or raw_meta.get("isbn"):
+                authors_str = format_authors_string(metadata.authors) if metadata.authors else "Author"
+                year_str = str(metadata.year) if metadata.year else str(datetime.now().year)
+                title_str = clean_words_for_title(metadata.title, 8) if metadata.title else clean_words_for_title(stem, 8)
+                filename = f"{authors_str}_{year_str}_{title_str}.pdf"
+                dest = config.categories.get("Books", "Books")
+                isbn_info = f" (ISBN: {raw_meta.get('isbn')})" if raw_meta.get("isbn") else ""
+                return ProposalResult(
+                    suggested_filename=sanitize_filename(filename),
+                    category="Books",
+                    destination=dest,
+                    confidence=0.96,
+                    reason=f"Identified published book/monograph{isbn_info} by {authors_str}",
                 )
 
             # Check if likely academic paper
