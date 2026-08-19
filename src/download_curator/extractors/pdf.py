@@ -73,7 +73,53 @@ class PDFExtractor(BaseExtractor):
             clean_text = re.sub(r"\s+", " ", extracted_text).strip()
             metadata.excerpt = clean_text[:1200] if clean_text else None
 
-            # 3. Academic Paper Heuristics
+            # 3. Course and Lecture Notes Detection
+            course_match = re.search(r"\b([A-Z]{2,5}\s*\d{2,4}[A-Za-z]?)\b(?::|\s+-|\s+)", clean_text[:800])
+            lecture_match = re.search(
+                r"\b(Lecture|Class|Discussion|Recitation|Handout|Problem Set|HW|Homework)\s*(?:#|No\.?|Number)?\s*(\d+)?(?::|-)?\s*([^\n\*†\n]+)",
+                extracted_text[:1000],
+                re.I,
+            )
+
+            if course_match or (lecture_match and lecture_match.group(2)):
+                raw_course = course_match.group(1).replace(" ", "").upper() if course_match else ""
+                unit_type = lecture_match.group(1).capitalize() if lecture_match else "Lecture"
+                unit_num = lecture_match.group(2) if (lecture_match and lecture_match.group(2)) else ""
+                raw_topic = lecture_match.group(3).strip() if (lecture_match and lecture_match.group(3)) else ""
+                clean_topic = re.sub(r"[\*†‡§\d]+$", "", raw_topic).strip()
+
+                metadata.raw_metadata["is_lecture_notes"] = True
+                if raw_course:
+                    metadata.raw_metadata["course_code"] = raw_course
+                if unit_num:
+                    metadata.raw_metadata["lecture_unit"] = f"{unit_type}{unit_num}"
+                elif unit_type:
+                    metadata.raw_metadata["lecture_unit"] = unit_type
+                if clean_topic:
+                    metadata.raw_metadata["lecture_topic"] = clean_topic
+                    metadata.title = clean_topic
+
+                # Find instructor name from line right after lecture line or copyright footnote
+                lines = [l.strip() for l in extracted_text.split("\n") if l.strip()]
+                instructor_found = None
+                for i, line in enumerate(lines[:10]):
+                    if re.search(r"\b(Lecture|Class|Discussion|Recitation|Handout|CS\d|ECON\d|MATH\d)\b", line, re.I):
+                        if i + 1 < len(lines):
+                            cand = re.sub(r"[\*†‡§\d]", "", lines[i + 1]).strip()
+                            if re.match(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+$", cand) and not re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december|stanford|university|mit|harvard|berkeley|department)", cand, re.I):
+                                instructor_found = cand
+                                break
+
+                # Footnote copyright check if not found
+                if not instructor_found:
+                    cp_match = re.search(r"(?:©|c©|\(c\))\s*(?:\d{4})?,?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)", clean_text[:1500])
+                    if cp_match:
+                        instructor_found = cp_match.group(1).strip()
+
+                if instructor_found and not metadata.authors:
+                    metadata.authors = [instructor_found]
+
+            # 4. Academic Paper Heuristics
             # arXiv check from filename or content
             arxiv_match = re.search(r"(?:arXiv:)?(\d{2})(\d{2})\.(\d{4,5})", file_path.name + " " + clean_text)
             if arxiv_match:

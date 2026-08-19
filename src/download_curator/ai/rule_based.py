@@ -99,6 +99,26 @@ class RuleBasedProvider(BaseAIProvider):
                     reason=f"Detected financial statement structure for {inst}",
                 )
 
+            # Lecture / Course Notes check
+            if raw_meta.get("is_lecture_notes") or "lecture" in stem.lower():
+                authors_str = format_authors_string(metadata.authors) if metadata.authors else "Instructor"
+                year_str = str(metadata.year) if metadata.year else str(datetime.now().year)
+                course_str = raw_meta.get("course_code", "")
+                unit_str = raw_meta.get("lecture_unit", "Lecture")
+                topic = raw_meta.get("lecture_topic") or metadata.title or stem
+                topic_str = clean_words_for_title(topic, 6)
+
+                parts = [p for p in [authors_str, year_str, course_str, unit_str, topic_str] if p]
+                filename = f"{'_'.join(parts)}.pdf"
+                dest = config.categories.get("Course & Lecture Notes", "Course Notes")
+                return ProposalResult(
+                    suggested_filename=sanitize_filename(filename),
+                    category="Course & Lecture Notes",
+                    destination=dest,
+                    confidence=0.94,
+                    reason=f"Identified course lecture notes for {course_str or 'course'} ({unit_str}) by {authors_str}",
+                )
+
             # Check if likely academic paper
             is_arxiv = "arxiv_id" in raw_meta or bool(re.match(r"^\d{4}\.\d{4,5}", stem))
             has_paper_signals = (

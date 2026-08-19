@@ -77,10 +77,11 @@ class MacNotifier:
         safe_message = message.replace('"', '\\"')
 
         apple_script = (
-            f'display notification "{safe_message}" '
-            f'with title "{safe_title}" '
-            f'subtitle "{safe_subtitle}" '
-            f'sound name "Default"'
+            'try\n'
+            f'    tell application id "com.user.downloadcurator.app" to display notification "{safe_message}" with title "{safe_title}" subtitle "{safe_subtitle}" sound name "Default"\n'
+            'on error\n'
+            f'    display notification "{safe_message}" with title "{safe_title}" subtitle "{safe_subtitle}" sound name "Default"\n'
+            'end try'
         )
 
         try:

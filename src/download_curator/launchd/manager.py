@@ -135,3 +135,16 @@ class LaunchAgentManager:
     def stop() -> None:
         if PLIST_PATH.exists():
             subprocess.run(["launchctl", "stop", LABEL], check=False)
+
+    @staticmethod
+    def restart() -> None:
+        if PLIST_PATH.exists():
+            uid = os.getuid()
+            res = subprocess.run(
+                ["launchctl", "kickstart", "-k", f"gui/{uid}/{LABEL}"],
+                capture_output=True,
+                check=False,
+            )
+            if res.returncode != 0:
+                subprocess.run(["launchctl", "unload", str(PLIST_PATH)], check=False)
+                subprocess.run(["launchctl", "load", str(PLIST_PATH)], check=False)

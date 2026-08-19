@@ -320,6 +320,13 @@ def launchd_stop() -> None:
     console.print("[yellow]Sent stop signal to LaunchAgent.[/yellow]")
 
 
+@launchd_app.command("restart")
+def launchd_restart() -> None:
+    """Restart the LaunchAgent service to apply configuration changes."""
+    LaunchAgentManager.restart()
+    console.print("[bold green]✓ Restarted LaunchAgent daemon.[/bold green]")
+
+
 config_app = typer.Typer(help="Manage configuration.")
 app.add_typer(config_app, name="config")
 
