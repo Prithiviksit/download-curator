@@ -123,12 +123,47 @@ public final class CuratorService {
         request.httpMethod = "POST"
         request.timeoutInterval = 30.0
 
-        let (data, response) = try await session.data(for: request)
-        if let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 {
-            let decoder = JSONDecoder()
-            return try decoder.decode(ProposalModel.self, from: data)
+        do {
+            let (data, response) = try await session.data(for: request)
+            if let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 {
+                let decoder = JSONDecoder()
+                return try decoder.decode(ProposalModel.self, from: data)
+            }
+        } catch {
+            return try runCLIEnhance(id: id)
         }
-        throw NSError(domain: "CuratorService", code: 500, userInfo: [NSLocalizedDescriptionKey: "AI enhancement failed"])
+        return try runCLIEnhance(id: id)
+    }
+
+    private func runCLIEnhance(id: Int) throws -> ProposalModel {
+        let process = Process()
+        let pipe = Pipe()
+        let possiblePaths = [
+            "/usr/local/bin/download-curator",
+            "/opt/homebrew/bin/download-curator",
+            NSHomeDirectory() + "/.local/bin/download-curator",
+            NSHomeDirectory() + "/Projects/download-curator/.venv/bin/download-curator",
+        ]
+
+        var executable = "download-curator"
+        for p in possiblePaths {
+            if FileManager.default.fileExists(atPath: p) {
+                executable = p
+                break
+            }
+        }
+
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = [executable, "enhance", "\(id)", "--json"]
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let decoder = JSONDecoder()
+        return try decoder.decode(ProposalModel.self, from: data)
     }
 
     public func restartService() async throws {

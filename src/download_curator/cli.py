@@ -246,6 +246,32 @@ def ignore(
 
 
 @app.command()
+def enhance(
+    proposal_id: int = typer.Argument(..., help="Proposal ID to enhance with AI."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON for UI consumption."),
+    config_file: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to custom config.yaml"),
+) -> None:
+    """Run AI model to generate/enhance proposal suggestion for comparison."""
+    cfg = load_config(config_file)
+    engine = CuratorEngine(config=cfg)
+
+    try:
+        updated = engine.enhance_with_ai(proposal_id)
+        if as_json:
+            print(updated.model_dump_json())
+        else:
+            console.print(f"[bold purple]✨ AI Suggestion:[/] [cyan]{updated.ai_filename}[/] -> [yellow]{updated.ai_destination}/[/]")
+            if updated.ai_reason:
+                console.print(f"[dim]Reason: {updated.ai_reason}[/dim]")
+    except Exception as e:
+        if as_json:
+            print(json.dumps({"error": str(e)}))
+        else:
+            console.print(f"[bold red]✗ AI enhancement failed:[/] {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def serve(
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Server port."),
     watch: bool = typer.Option(True, "--watch/--no-watch", help="Also run background filesystem watcher."),

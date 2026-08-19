@@ -164,6 +164,8 @@ class PDFExtractor(BaseExtractor):
                         metadata.excerpt = "\n\n".join(excerpt_parts)
 
             # 4. Course and Lecture Notes Detection (only if not already confirmed as a book monograph)
+            course_match = None
+            lecture_match = None
             if not metadata.raw_metadata.get("is_book"):
                 course_match = re.search(r"\b([A-Z]{2,5}\s*\d{2,4}[A-Za-z]?)\b(?::|\s+-|\s+)", clean_text[:800])
                 # Filter corporate/metadata False positives
