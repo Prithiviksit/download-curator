@@ -68,9 +68,31 @@ class MacNotifier:
         self._send_macos_notification(title, subtitle, message)
 
     def _send_macos_notification(self, title: str, subtitle: str, message: str) -> None:
-        # Native notifications are now posted directly by DownloadCurator.app (via UNUserNotificationCenter)
-        # to ensure clicking the banner opens DownloadCurator.app instead of Script Editor.
-        pass
+        if not self.enabled:
+            return
+
+        safe_title = title.replace('"', '\\"')
+        safe_subtitle = subtitle.replace('"', '\\"')
+        safe_message = message.replace('"', '\\"')
+
+        apple_script = (
+            'try\n'
+            f'    tell application "DownloadCurator" to display notification "{safe_message}" with title "{safe_title}" subtitle "{safe_subtitle}" sound name "Default"\n'
+            'on error\n'
+            f'    display notification "{safe_message}" with title "{safe_title}" subtitle "{safe_subtitle}" sound name "Default"\n'
+            'end try'
+        )
+
+        try:
+            subprocess.Popen(
+                ["osascript", "-e", apple_script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+            )
+        except Exception as e:
+            logger.debug(f"Failed to dispatch macOS notification: {e}")
 
 
 _DEFAULT_NOTIFIER: Optional[MacNotifier] = None
