@@ -38,6 +38,14 @@ public struct MenuBarPopoverView: View {
                         .cornerRadius(4)
                 }
 
+                Button(action: triggerRestartService) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+                .buttonStyle(.plain)
+                .help("Restart background service & reload config.yaml")
+
                 Button(action: refreshData) {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption)
@@ -227,6 +235,23 @@ public struct MenuBarPopoverView: View {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
+                }
+            }
+        }
+    }
+
+    private func triggerRestartService() {
+        statusMessage = "Restarting background service..."
+        Task {
+            do {
+                try await CuratorService.shared.restartService()
+                await MainActor.run {
+                    self.statusMessage = "✓ Service restarted & config reloaded"
+                    self.refreshData()
+                }
+            } catch {
+                await MainActor.run {
+                    self.statusMessage = "Restart failed: \(error.localizedDescription)"
                 }
             }
         }

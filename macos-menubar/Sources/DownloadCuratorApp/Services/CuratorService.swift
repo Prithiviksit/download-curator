@@ -131,6 +131,29 @@ public final class CuratorService {
         throw NSError(domain: "CuratorService", code: 500, userInfo: [NSLocalizedDescriptionKey: "AI enhancement failed"])
     }
 
+    public func restartService() async throws {
+        // 1. Try local server reload
+        let endpoint = baseURL.appendingPathComponent("restart")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 3.0
+        _ = try? await session.data(for: request)
+
+        // 2. Also trigger launchctl kickstart to ensure daemon reloaded from disk
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["kickstart", "-k", "gui/\(getuid())/com.user.download-curator"]
+        try? process.run()
+    }
+
+    public func triggerScan() async throws {
+        let endpoint = baseURL.appendingPathComponent("scan")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 10.0
+        _ = try? await session.data(for: request)
+    }
+
     public func openFile(path: String) {
         let url = URL(fileURLWithPath: path)
         NSWorkspace.shared.open(url)

@@ -117,6 +117,25 @@ class CuratorAPIHandler(BaseHTTPRequestHandler):
                 self._send_json_response({"error": str(e)}, status=400)
             return
 
+        # POST /api/restart (Reload config & AI provider)
+        if path_parts == ["api", "restart"]:
+            try:
+                from download_curator.config import load_config
+                from download_curator.ai.provider_factory import get_ai_provider
+                new_cfg = load_config()
+                self.engine.config = new_cfg
+                self.engine.ai_provider = get_ai_provider(new_cfg)
+                self._send_json_response(
+                    {
+                        "message": "Configuration reloaded successfully.",
+                        "provider": new_cfg.ai.provider,
+                        "model": new_cfg.ai.model,
+                    }
+                )
+            except Exception as e:
+                self._send_json_response({"error": str(e)}, status=400)
+            return
+
         # Proposal specific actions: /api/proposals/<id>/<action>
         if len(path_parts) == 4 and path_parts[:2] == ["api", "proposals"] and path_parts[2].isdigit():
             prop_id = int(path_parts[2])

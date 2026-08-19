@@ -93,7 +93,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
         menu.addItem(NSMenuItem(title: "Downloads Curator", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Review Proposals Queue", action: #selector(openReviewQueue), keyEquivalent: "o"))
+        menu.addItem(NSMenuItem(title: "Scan ~/Downloads Now", action: #selector(scanNowClicked), keyEquivalent: "s"))
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Restart Service & Reload Config", action: #selector(restartServiceClicked), keyEquivalent: "r"))
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
 
         statusItem.menu = menu
@@ -103,6 +105,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
 
     @objc private func openReviewQueue() {
         showPopover()
+    }
+
+    @objc private func scanNowClicked() {
+        Task {
+            _ = try? await CuratorService.shared.triggerScan()
+            await MainActor.run {
+                self.pollPendingProposals()
+            }
+        }
+    }
+
+    @objc private func restartServiceClicked() {
+        Task {
+            try? await CuratorService.shared.restartService()
+            await MainActor.run {
+                self.pollPendingProposals()
+            }
+        }
     }
 
     @objc private func quitApp() {
