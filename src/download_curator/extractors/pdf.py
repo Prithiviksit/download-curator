@@ -164,59 +164,67 @@ class PDFExtractor(BaseExtractor):
                         metadata.excerpt = "\n\n".join(excerpt_parts)
 
             # 4. Course and Lecture Notes Detection (only if not already confirmed as a book monograph)
-            course_match = None
-            lecture_match = None
             if not metadata.raw_metadata.get("is_book"):
+                norm_front = full_front_matter.replace("∗", "*").replace("†", "*").replace("‡", "*").replace("§", "*")
+                norm_lines = [l.strip() for l in norm_front.split("\n") if l.strip()]
+
                 course_match = re.search(r"\b([A-Z]{2,5}\s*\d{2,4}[A-Za-z]?)\b(?::|\s+-|\s+)", clean_text[:800])
-                # Filter corporate/metadata False positives
                 if course_match and course_match.group(1).replace(" ", "").upper() in {"AG", "GMBH", "INC", "LLC", "LTD", "CORP", "ISBN", "PAGE", "VOL", "CHAP", "SEC", "DOC", "PDF"}:
                     course_match = None
 
-                lecture_match = re.search(
-                    r"\b(Lecture|Class|Discussion|Recitation|Handout|Problem Set|HW|Homework)\s*(?:#|No\.?|Number)?\s*(\d+)?(?::|-)?\s*([^\n\*†\n]+)",
-                    extracted_text[:1000],
-                    re.I,
-                )
+                for i, line in enumerate(norm_lines[:10]):
+                    lm = re.search(
+                        r"\b(Lecture|Class|Discussion|Recitation|Handout|Problem Set|HW|Homework)\s*(?:#|No\.?|Number)?\s*(\d+)?(?::|-)?\s*(.*)",
+                        line,
+                        re.I,
+                    )
+                    if lm and (lm.group(2) or lm.group(3) or course_match):
+                        unit_type = lm.group(1).capitalize()
+                        unit_num = lm.group(2) or ""
+                        raw_topic = lm.group(3).strip()
+                        last_topic_idx = i
 
-            if course_match or (lecture_match and lecture_match.group(2)):
-                raw_course = course_match.group(1).replace(" ", "").upper() if course_match else ""
-                unit_type = lecture_match.group(1).capitalize() if lecture_match else "Lecture"
-                unit_num = lecture_match.group(2) if (lecture_match and lecture_match.group(2)) else ""
-                raw_topic = lecture_match.group(3).strip() if (lecture_match and lecture_match.group(3)) else ""
-                clean_topic = re.sub(r"[\*†‡§\d]+$", "", raw_topic).strip()
+                        # Multi-line topic continuation check
+                        if i + 1 < len(norm_lines):
+                            next_line = norm_lines[i + 1]
+                            clean_cand = next_line.replace("*", "").strip()
+                            if "*" in next_line and not re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december|\b\d{4}\b|stanford|university|department|mit|berkeley|harvard)", next_line, re.I):
+                                if not re.match(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+$", clean_cand) or any(w in clean_cand.lower() for w in ["flow", "game", "graph", "cut", "tree", "linear", "bound", "algorithm", "problem", "model", "analysis", "matching", "mechanism", "intro", "theory", "part"]):
+                                    raw_topic += " " + clean_cand
+                                    last_topic_idx = i + 1
 
-                metadata.raw_metadata["is_lecture_notes"] = True
-                if raw_course:
-                    metadata.raw_metadata["course_code"] = raw_course
-                if unit_num:
-                    metadata.raw_metadata["lecture_unit"] = f"{unit_type}{unit_num}"
-                elif unit_type:
-                    metadata.raw_metadata["lecture_unit"] = unit_type
-                if clean_topic:
-                    metadata.raw_metadata["lecture_topic"] = clean_topic
-                    metadata.title = clean_topic
+                        clean_topic = re.sub(r"[\*†‡§\u2217\u2020\s]+$", "", raw_topic).strip()
+                        raw_course = course_match.group(1).replace(" ", "").upper() if course_match else ""
 
-                # Find instructor name from line right after lecture line or copyright footnote
-                lines = [l.strip() for l in extracted_text.split("\n") if l.strip()]
-                instructor_found = None
-                for i, line in enumerate(lines[:10]):
-                    if re.search(r"\b(Lecture|Class|Discussion|Recitation|Handout|CS\d|ECON\d|MATH\d)\b", line, re.I):
-                        if i + 1 < len(lines):
-                            cand = re.sub(r"[\*†‡§\d]", "", lines[i + 1]).strip()
-                            if re.match(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+$", cand) and not re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december|stanford|university|mit|harvard|berkeley|department)", cand, re.I):
+                        metadata.raw_metadata["is_lecture_notes"] = True
+                        if raw_course:
+                            metadata.raw_metadata["course_code"] = raw_course
+                        if unit_num:
+                            metadata.raw_metadata["lecture_unit"] = f"{unit_type}{unit_num}"
+                        elif unit_type:
+                            metadata.raw_metadata["lecture_unit"] = unit_type
+                        if clean_topic:
+                            metadata.raw_metadata["lecture_topic"] = clean_topic
+                            metadata.title = clean_topic
+
+                        # Instructor detection (search after the last topic line)
+                        instructor_found = None
+                        for cand_line in norm_lines[last_topic_idx + 1:last_topic_idx + 4]:
+                            cand = cand_line.replace("*", "").strip()
+                            if re.match(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+$", cand) and not re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december|stanford|university|mit|harvard|berkeley|department|goals|problems|course|introduction)", cand, re.I):
                                 instructor_found = cand
                                 break
 
-                # Footnote copyright check if not found
-                if not instructor_found:
-                    cp_match = re.search(r"(?:©|c©|\(c\))\s*(?:\d{4})?,?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)", clean_text[:1500])
-                    if cp_match:
-                        instructor_found = cp_match.group(1).strip()
+                        if not instructor_found:
+                            cp_match = re.search(r"(?:©|c©|\(c\))\s*(?:\d{4})?,?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)", clean_text[:1500])
+                            if cp_match:
+                                instructor_found = cp_match.group(1).strip()
 
-                if instructor_found and not metadata.authors:
-                    metadata.authors = [instructor_found]
+                        if instructor_found and not metadata.authors:
+                            metadata.authors = [instructor_found]
+                        break
 
-            # 4. Academic Paper Heuristics
+            # 5. Academic Paper Heuristics
             # arXiv check from filename or content
             arxiv_match = re.search(r"(?:arXiv:)?(\d{2})(\d{2})\.(\d{4,5})", file_path.name + " " + clean_text)
             if arxiv_match:

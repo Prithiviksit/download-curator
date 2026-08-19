@@ -113,6 +113,7 @@ class CuratorConfig(BaseModel):
         default_factory=lambda: {
             "Academic Papers": "Academic Papers",
             "Books": "Books",
+            "Course & Lecture Notes": "Course Notes",
             "Slides": "Presentations",
             "Invoices & Receipts": "Financial/Invoices",
             "Financial Statements": "Financial/Statements",

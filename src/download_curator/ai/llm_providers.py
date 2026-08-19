@@ -25,6 +25,7 @@ SYSTEM_PROMPT = """You are an expert file organizer for a macOS download folder.
 Your task is to analyze file metadata and excerpt to suggest a clean, standardized filename and category.
 
 Standard naming conventions:
+- Course & Lecture Notes: {Instructor}_{Year}_{CourseCode}_{LectureUnit}_{Topic}.pdf (e.g. Roughgarden_2016_CS261_Lecture1_Course_Goals_And_Maximum_Flow.pdf)
 - Academic papers: Author[_Author]_Year_Short_Title.ext (e.g. Acemoglu_Smith_2026_Credit_Markets.pdf)
 - Books: Author_Year_Title.ext
 - Slides: Topic_or_Title.ext
@@ -36,6 +37,7 @@ Standard naming conventions:
 - For unclear files: Category "Unclassified"
 
 Available categories and destinations:
+- Course & Lecture Notes -> "Course Notes"
 - Academic Papers -> "Academic Papers"
 - Books -> "Books"
 - Slides -> "Presentations"
@@ -51,6 +53,10 @@ Available categories and destinations:
 - Audio & Video -> "Media"
 - Unclassified -> "Unclassified"
 
+IMPORTANT CLASSIFICATION RULES:
+- If a document contains a course code (e.g. CS261, CS269I, ECON201), lecture numbers ("Lecture #1", "Lecture 9", "HW1", "Problem Set 2"), course syllabi, or teaching handouts, you MUST classify it as "Course & Lecture Notes" with destination "Course Notes", NOT as "Academic Papers".
+- "Academic Papers" are formal published research papers with abstracts, journal/conference venues, or arXiv preprints.
+
 You MUST output ONLY a valid JSON object matching this schema:
 {
   "suggested_filename": "string (including original file extension)",
@@ -64,17 +70,34 @@ You MUST output ONLY a valid JSON object matching this schema:
 
 def _build_user_prompt(file_path: Path, metadata: ExtractedMetadata) -> str:
     year_str = str(metadata.year) if metadata.year else (metadata.date or "N/A")
-    return (
-        f"Original Filename: {file_path.name}\n"
-        f"File Extension: {file_path.suffix}\n"
-        f"Detected Type: {metadata.file_type}\n"
-        f"Title: {metadata.title or 'N/A'}\n"
-        f"Authors: {', '.join(metadata.authors) if metadata.authors else 'N/A'}\n"
-        f"Year/Date: {year_str}\n"
-        f"Merchant/Institution: {metadata.merchant_or_institution or 'N/A'}\n"
-        f"Application/Dataset Name: {metadata.application_name or metadata.dataset_name or 'N/A'}\n"
-        f"Content Excerpt:\n{metadata.excerpt or 'N/A'}\n"
-    )
+    raw = metadata.raw_metadata or {}
+    lines = [
+        f"Original Filename: {file_path.name}",
+        f"File Extension: {file_path.suffix}",
+        f"Detected Type: {metadata.file_type}",
+    ]
+    if raw.get("is_lecture_notes"):
+        lines.append(f"Document Class: Course / Lecture Notes")
+        if raw.get("course_code"):
+            lines.append(f"Course Code: {raw.get('course_code')}")
+        if raw.get("lecture_unit"):
+            lines.append(f"Lecture Unit: {raw.get('lecture_unit')}")
+        if raw.get("lecture_topic"):
+            lines.append(f"Lecture Topic: {raw.get('lecture_topic')}")
+    elif raw.get("is_book"):
+        lines.append(f"Document Class: Book / Monograph")
+        if raw.get("isbn"):
+            lines.append(f"ISBN: {raw.get('isbn')}")
+
+    lines.extend([
+        f"Title: {metadata.title or 'N/A'}",
+        f"Authors/Instructor: {', '.join(metadata.authors) if metadata.authors else 'N/A'}",
+        f"Year/Date: {year_str}",
+        f"Merchant/Institution: {metadata.merchant_or_institution or 'N/A'}",
+        f"Application/Dataset Name: {metadata.application_name or metadata.dataset_name or 'N/A'}",
+        f"Content Excerpt:\n{metadata.excerpt or 'N/A'}",
+    ])
+    return "\n".join(lines) + "\n"
 
 
 class GeminiProvider(BaseAIProvider):
