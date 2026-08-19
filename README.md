@@ -178,9 +178,10 @@ naming_rules:
   datasets: "{dataset_name}_{version}_{date}.{ext}"
 
 ai:
-  provider: rule_based   # rule_based (offline), gemini, openai, anthropic, ollama
-  api_key: null
-  model: null
+  provider: rule_based   # rule_based (offline), openrouter, deepseek, opencode, gemini, openai, anthropic, ollama
+  api_key: null          # or set OPENROUTER_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, etc.
+  model: null            # e.g. "anthropic/claude-3.5-haiku", "deepseek-chat", "gpt-4o-mini"
+  base_url: null         # optional custom base URL (e.g. "https://openrouter.ai/api/v1", "http://localhost:8000/v1")
 
 safety:
   allowed_source_directories:

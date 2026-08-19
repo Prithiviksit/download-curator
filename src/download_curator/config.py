@@ -170,8 +170,18 @@ def load_config(config_path: Optional[Path] = None) -> CuratorConfig:
         config.ai.provider = os.environ["CURATOR_AI_PROVIDER"]
     if os.environ.get("GEMINI_API_KEY"):
         config.ai.api_key = os.environ["GEMINI_API_KEY"]
+    elif os.environ.get("OPENROUTER_API_KEY"):
+        config.ai.api_key = os.environ["OPENROUTER_API_KEY"]
+        if not os.environ.get("CURATOR_AI_PROVIDER") and config.ai.provider == "rule_based":
+            config.ai.provider = "openrouter"
+    elif os.environ.get("DEEPSEEK_API_KEY"):
+        config.ai.api_key = os.environ["DEEPSEEK_API_KEY"]
+        if not os.environ.get("CURATOR_AI_PROVIDER") and config.ai.provider == "rule_based":
+            config.ai.provider = "deepseek"
     elif os.environ.get("OPENAI_API_KEY"):
         config.ai.api_key = os.environ["OPENAI_API_KEY"]
+    elif os.environ.get("OPENCODE_API_KEY"):
+        config.ai.api_key = os.environ["OPENCODE_API_KEY"]
     elif os.environ.get("ANTHROPIC_API_KEY"):
         config.ai.api_key = os.environ["ANTHROPIC_API_KEY"]
 

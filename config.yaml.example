@@ -72,11 +72,20 @@ ignore:
     - "Unclassified"
 
 # AI Provider Settings
-# Options: rule_based (default, no API key needed), gemini, openai, anthropic, ollama
+# Supported providers:
+#   - rule_based (default, offline, 0 API keys required)
+#   - openrouter (OpenRouter API - any model e.g. anthropic/claude-3.5-haiku, deepseek/deepseek-chat)
+#   - deepseek (DeepSeek API e.g. deepseek-chat)
+#   - opencode / openai_compatible / custom (Local or custom endpoints e.g. vLLM, LM Studio)
+#   - gemini (Google Gemini API)
+#   - openai (OpenAI API)
+#   - anthropic (Anthropic Claude API)
+#   - ollama (Local Ollama API)
 ai:
   provider: rule_based
-  api_key: null
-  model: null
+  api_key: null        # or set via environment variable: OPENROUTER_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, etc.
+  model: null          # e.g. "deepseek/deepseek-chat" for OpenRouter or "deepseek-chat" for DeepSeek
+  base_url: null       # optional custom endpoint (e.g. "http://localhost:8000/v1")
   confidence_threshold: 0.7
 
 # Safety Settings

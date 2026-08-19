@@ -41,6 +41,37 @@ def get_ai_provider(config: CuratorConfig) -> BaseAIProvider:
         logger.info("No OpenAI API key found, using rule-based provider.")
         return RuleBasedProvider()
 
+    elif provider_name == "openrouter":
+        if api_key:
+            return OpenAIProvider(
+                api_key=api_key,
+                model=config.ai.model or "anthropic/claude-3.5-haiku",
+                base_url=config.ai.base_url or "https://openrouter.ai/api/v1",
+                custom_headers={
+                    "HTTP-Referer": "https://github.com/Prithiviksit/download-curator",
+                    "X-Title": "Download Curator",
+                },
+            )
+        logger.info("No OpenRouter API key found, using rule-based provider.")
+        return RuleBasedProvider()
+
+    elif provider_name == "deepseek":
+        if api_key:
+            return OpenAIProvider(
+                api_key=api_key,
+                model=config.ai.model or "deepseek-chat",
+                base_url=config.ai.base_url or "https://api.deepseek.com",
+            )
+        logger.info("No DeepSeek API key found, using rule-based provider.")
+        return RuleBasedProvider()
+
+    elif provider_name in ("opencode", "openai_compatible", "custom"):
+        return OpenAIProvider(
+            api_key=api_key or "not-needed",
+            model=config.ai.model or "default",
+            base_url=config.ai.base_url or "http://localhost:8000/v1",
+        )
+
     elif provider_name == "anthropic":
         if api_key:
             return AnthropicProvider(api_key=api_key, model=config.ai.model)
