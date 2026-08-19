@@ -104,7 +104,7 @@ public struct MenuBarPopoverView: View {
                         .foregroundColor(.red)
 
                         Button("Skip") {
-                            nextProposal()
+                            skipCurrent()
                         }
                     }
                     .font(.caption)
@@ -119,12 +119,12 @@ public struct MenuBarPopoverView: View {
                             Button(action: prevProposal) {
                                 Image(systemName: "chevron.left")
                             }
-                            .disabled(currentIndex == 0)
+                            .disabled(proposals.count <= 1)
 
                             Button(action: nextProposal) {
                                 Image(systemName: "chevron.right")
                             }
-                            .disabled(currentIndex >= proposals.count - 1)
+                            .disabled(proposals.count <= 1)
                         }
 
                         Button("Edit (E)") {
@@ -237,15 +237,24 @@ public struct MenuBarPopoverView: View {
         refreshData()
     }
 
+    private func skipCurrent() {
+        if proposals.count > 1 {
+            currentIndex = (currentIndex + 1) % proposals.count
+            statusMessage = "Skipped to next (file kept in queue)"
+        } else {
+            statusMessage = "Kept in queue (untouched)"
+        }
+    }
+
     private func nextProposal() {
-        if currentIndex < proposals.count - 1 {
-            currentIndex += 1
+        if proposals.count > 1 {
+            currentIndex = (currentIndex + 1) % proposals.count
         }
     }
 
     private func prevProposal() {
-        if currentIndex > 0 {
-            currentIndex -= 1
+        if proposals.count > 1 {
+            currentIndex = (currentIndex - 1 + proposals.count) % proposals.count
         }
     }
 }

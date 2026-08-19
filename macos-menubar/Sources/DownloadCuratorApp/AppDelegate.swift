@@ -2,7 +2,9 @@ import AppKit
 import SwiftUI
 import UserNotifications
 
-public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, NSUserNotificationCenterDelegate {
+    public static var shared: AppDelegate?
+
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var timer: Timer?
@@ -10,14 +12,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
     private var hasInitializedKnownIDs: Bool = false
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        // Configure native UserNotifications
-        let center = UNUserNotificationCenter.current()
-        center.delegate = self
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                print("Notification authorization error: \(error)")
-            }
-        }
+        AppDelegate.shared = self
+
+        // Configure AppKit NSUserNotificationCenter
+        NSUserNotificationCenter.default.delegate = self
+
+        // Configure UserNotifications UNUserNotificationCenter
+        let unCenter = UNUserNotificationCenter.current()
+        unCenter.delegate = self
+        unCenter.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
 
         // Create popover
         popover = NSPopover()
@@ -29,27 +32,36 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "tray.and.arrow.down.fill", accessibilityDescription: "Download Curator")
-            button.action = #selector(togglePopover)
+            button.action = #selector(statusBarButtonClicked)
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
-        // Start periodic poll and badge update timer
-        timer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
+        // Listen for IPC show UI requests
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(handleOpenUIRequest),
+            name: NSNotification.Name("com.user.downloadcurator.openUI"),
+            object: nil
+        )
+
+        // Start periodic poll timer
+        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.pollPendingProposals()
         }
         pollPendingProposals()
     }
 
-    @objc public func togglePopover() {
-        guard let button = statusItem.button else { return }
-
+    @objc public func statusBarButtonClicked() {
         let event = NSApp.currentEvent
         if event?.type == .rightMouseUp {
             showContextMenu()
             return
         }
+        togglePopover()
+    }
 
+    @objc public func togglePopover() {
         if popover.isShown {
             popover.performClose(nil)
         } else {
@@ -58,16 +70,29 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
     }
 
     public func showPopover() {
-        guard let button = statusItem.button else { return }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let button = self.statusItem.button else { return }
+            if !self.popover.isShown {
+                self.popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            }
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    @objc private func handleOpenUIRequest() {
+        showPopover()
+    }
+
+    public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showPopover()
+        return true
     }
 
     private func showContextMenu() {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Downloads Curator", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Open Review Queue", action: #selector(openReviewQueue), keyEquivalent: "o"))
+        menu.addItem(NSMenuItem(title: "Review Proposals Queue", action: #selector(openReviewQueue), keyEquivalent: "o"))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
 
@@ -114,42 +139,56 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
         // Detect newly arrived proposals
         let newItems = proposals.filter { !knownProposalIDs.contains($0.id) }
         if !newItems.isEmpty {
-            sendNativeNotification(for: newItems)
+            sendNotification(for: newItems)
         }
 
         knownProposalIDs = currentIDs
     }
 
-    private func sendNativeNotification(for newItems: [ProposalModel]) {
-        let content = UNMutableNotificationContent()
-        content.title = "Downloads Curator"
-        content.sound = .default
+    private func sendNotification(for newItems: [ProposalModel]) {
+        let title = "Downloads Curator"
+        let subtitle: String
+        let body: String
 
         if newItems.count == 1, let item = newItems.first {
-            content.subtitle = "New download ready to organize"
-            content.body = "Proposed: \(item.proposed_filename)\nCategory: \(item.category)"
+            subtitle = "New download ready to organize"
+            body = "Proposed: \(item.proposed_filename)\nFolder: \(item.proposed_destination)/"
         } else {
-            content.subtitle = "\(newItems.count) downloads ready to organize"
+            subtitle = "\(newItems.count) downloads ready to organize"
             let names = newItems.map { $0.proposed_filename }.prefix(3).joined(separator: ", ")
-            content.body = names + (newItems.count > 3 ? " and \(newItems.count - 3) more" : "")
+            body = names + (newItems.count > 3 ? " and \(newItems.count - 3) more" : "")
         }
 
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil // deliver immediately
-        )
+        // 1. Deliver via NSUserNotificationCenter (AppKit - guaranteed native click handling)
+        let notification = NSUserNotification()
+        notification.title = title
+        notification.subtitle = subtitle
+        notification.informativeText = body
+        notification.soundName = NSUserNotificationDefaultSoundName
+        NSUserNotificationCenter.default.deliver(notification)
 
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Failed to deliver native notification: \(error)")
-            }
-        }
+        // 2. Also deliver via UNUserNotificationCenter
+        let unContent = UNMutableNotificationContent()
+        unContent.title = title
+        unContent.subtitle = subtitle
+        unContent.body = body
+        unContent.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: unContent, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    // MARK: - NSUserNotificationCenterDelegate
+
+    public func userNotificationCenter(_ center: NSUserNotificationCenter, shouldPresent notification: NSUserNotification) -> Bool {
+        return true
+    }
+
+    public func userNotificationCenter(_ center: NSUserNotificationCenter, didActivate notification: NSUserNotification) {
+        showPopover()
     }
 
     // MARK: - UNUserNotificationCenterDelegate
 
-    // Present notification banner even if app is in foreground
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
@@ -158,15 +197,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
         completionHandler([.banner, .sound, .badge])
     }
 
-    // Handle user clicking the notification banner
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        DispatchQueue.main.async { [weak self] in
-            self?.showPopover()
-        }
+        showPopover()
         completionHandler()
     }
 }
