@@ -149,10 +149,12 @@ class CuratorConfig(BaseModel):
 
 def load_config(config_path: Optional[Path] = None) -> CuratorConfig:
     """Load configuration from YAML file or return defaults."""
-    target_path = config_path or DEFAULT_CONFIG_PATH
-    if isinstance(target_path, str):
-        target_path = Path(target_path)
-    target_path = target_path.expanduser().resolve()
+    if config_path:
+        target_path = Path(config_path).expanduser().resolve()
+    elif Path("config.yaml").exists():
+        target_path = Path("config.yaml").resolve()
+    else:
+        target_path = DEFAULT_CONFIG_PATH
 
     if target_path.exists():
         try:
