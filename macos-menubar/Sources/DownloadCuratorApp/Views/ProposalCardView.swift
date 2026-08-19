@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct ProposalCardView: View {
     public let proposal: ProposalModel
+    public var onSelectName: ((String, String) -> Void)? = nil
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -43,12 +44,75 @@ public struct ProposalCardView: View {
 
             // Proposed Filename
             VStack(alignment: .leading, spacing: 4) {
-                Text("PROPOSED FILENAME")
+                Text("ACTIVE PROPOSED FILENAME")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.secondary)
                 Text(proposal.proposed_filename)
                     .font(.system(.body, design: .monospaced).bold())
                     .foregroundColor(.accentColor)
+            }
+
+            // Comparison Pills if AI comparison is available
+            if let aiName = proposal.ai_filename, let ruleName = proposal.rule_based_filename ?? Optional(proposal.proposed_filename), aiName != ruleName {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("COMPARE PROPOSALS")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.secondary)
+
+                    // Rule-Based option
+                    Button(action: {
+                        onSelectName?(ruleName, proposal.rule_based_destination ?? proposal.proposed_destination)
+                    }) {
+                        HStack {
+                            Image(systemName: proposal.proposed_filename == ruleName ? "largecircle.fill.circle" : "circle")
+                                .foregroundColor(proposal.proposed_filename == ruleName ? .blue : .secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Rule-Based Heuristic")
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.secondary)
+                                Text(ruleName)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.primary)
+                            }
+                            Spacer()
+                        }
+                        .padding(6)
+                        .background(proposal.proposed_filename == ruleName ? Color.blue.opacity(0.1) : Color.clear)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+
+                    // AI Model option
+                    Button(action: {
+                        onSelectName?(aiName, proposal.ai_destination ?? proposal.proposed_destination)
+                    }) {
+                        HStack {
+                            Image(systemName: proposal.proposed_filename == aiName ? "largecircle.fill.circle" : "circle")
+                                .foregroundColor(proposal.proposed_filename == aiName ? .purple : .secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Text("AI Model (LLM)")
+                                        .font(.caption2.bold())
+                                        .foregroundColor(.purple)
+                                    if let reason = proposal.ai_reason {
+                                        Text("• \(reason)")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Text(aiName)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.primary)
+                            }
+                            Spacer()
+                        }
+                        .padding(6)
+                        .background(proposal.proposed_filename == aiName ? Color.purple.opacity(0.1) : Color.clear)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             // Proposed Destination
@@ -67,14 +131,16 @@ public struct ProposalCardView: View {
             }
 
             // Reason
-            VStack(alignment: .leading, spacing: 4) {
-                Text("REASON")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary)
-                Text(proposal.reason)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if proposal.ai_filename == nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("REASON")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.secondary)
+                    Text(proposal.reason)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(14)

@@ -152,6 +152,14 @@ class CuratorAPIHandler(BaseHTTPRequestHandler):
                 self._send_json_response({"success": success, "proposal_id": prop_id})
                 return
 
+            elif action == "ai_enhance":
+                try:
+                    updated = self.engine.enhance_with_ai(prop_id)
+                    self._send_json_response(updated.model_dump())
+                except Exception as e:
+                    self._send_json_response({"error": str(e)}, status=400)
+                return
+
             elif action == "edit":
                 updated = self.engine.edit_proposal(
                     prop_id,

@@ -164,6 +164,8 @@ class CuratorEngine:
                     category=result.category,
                     confidence=result.confidence,
                     reason=result.reason,
+                    rule_based_filename=safe_name,
+                    rule_based_destination=result.destination,
                     extracted_metadata=metadata,
                     status=ProposalStatus.PENDING,
                 )
@@ -180,6 +182,36 @@ class CuratorEngine:
             self.notifier.notify_new_download(f"{len(created_proposals)} files")
 
         return created_proposals
+
+    def enhance_with_ai(self, proposal_id: int) -> Proposal:
+        """Run configured AI model on an existing proposal to generate an AI suggestion for comparison."""
+        proposal = self.db.get_proposal_by_id(proposal_id)
+        if not proposal:
+            raise ValueError(f"Proposal {proposal_id} not found.")
+
+        file_path = Path(proposal.current_path)
+        metadata = proposal.extracted_metadata or (extract_metadata(file_path) if file_path.exists() else None)
+        if not metadata:
+            metadata = ExtractedMetadata()
+
+        # Run AI provider
+        ai_res = self.ai_provider.generate_proposal(file_path, metadata, self.config)
+        safe_ai_name = sanitize_filename(
+            ai_res.suggested_filename,
+            max_length=self.config.safety.max_filename_length,
+        )
+
+        proposal.ai_filename = safe_ai_name
+        proposal.ai_destination = ai_res.destination
+        proposal.ai_reason = ai_res.reason
+        proposal.ai_confidence = ai_res.confidence
+
+        if not proposal.rule_based_filename:
+            proposal.rule_based_filename = proposal.proposed_filename
+            proposal.rule_based_destination = proposal.proposed_destination
+
+        updated = self.db.add_or_update_proposal(proposal)
+        return updated
 
     def get_pending_proposals(self) -> List[Proposal]:
         """Fetch all pending proposals whose source files still exist."""

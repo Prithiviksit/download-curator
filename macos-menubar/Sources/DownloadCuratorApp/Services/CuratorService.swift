@@ -117,6 +117,20 @@ public final class CuratorService {
         _ = try? await session.data(for: request)
     }
 
+    public func enhanceWithAI(id: Int) async throws -> ProposalModel {
+        let endpoint = baseURL.appendingPathComponent("proposals/\(id)/ai_enhance")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30.0
+
+        let (data, response) = try await session.data(for: request)
+        if let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 {
+            let decoder = JSONDecoder()
+            return try decoder.decode(ProposalModel.self, from: data)
+        }
+        throw NSError(domain: "CuratorService", code: 500, userInfo: [NSLocalizedDescriptionKey: "AI enhancement failed"])
+    }
+
     public func openFile(path: String) {
         let url = URL(fileURLWithPath: path)
         NSWorkspace.shared.open(url)

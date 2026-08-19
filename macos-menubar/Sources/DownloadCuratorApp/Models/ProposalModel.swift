@@ -8,8 +8,14 @@ public struct ProposalModel: Identifiable, Codable, Equatable {
     public var proposed_filename: String
     public var proposed_destination: String
     public var category: String
-    public let confidence: Double
-    public let reason: String
+    public var confidence: Double
+    public var reason: String
+    public var rule_based_filename: String?
+    public var rule_based_destination: String?
+    public var ai_filename: String?
+    public var ai_destination: String?
+    public var ai_reason: String?
+    public var ai_confidence: Double?
     public let status: String
 
     public var currentFilename: String {

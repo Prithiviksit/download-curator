@@ -73,6 +73,12 @@ class Proposal(BaseModel):
     category: str
     confidence: float = 0.0
     reason: str = ""
+    rule_based_filename: Optional[str] = None
+    rule_based_destination: Optional[str] = None
+    ai_filename: Optional[str] = None
+    ai_destination: Optional[str] = None
+    ai_reason: Optional[str] = None
+    ai_confidence: Optional[float] = None
     extracted_metadata: Optional[ExtractedMetadata] = None
     status: ProposalStatus = ProposalStatus.PENDING
     created_at: datetime = Field(default_factory=datetime.now)

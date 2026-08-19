@@ -7,6 +7,7 @@ public struct MenuBarPopoverView: View {
     @State private var editFilename: String = ""
     @State private var editDestination: String = ""
     @State private var isLoading: Bool = false
+    @State private var isEnhancingWithAI: Bool = false
     @State private var statusMessage: String? = nil
 
     private let timer = Timer.publish(every: 3.0, on: .main, in: .common).autoconnect()
@@ -77,8 +78,18 @@ public struct MenuBarPopoverView: View {
                     )
                     .padding(.horizontal, 14)
                 } else {
-                    ProposalCardView(proposal: proposal)
-                        .padding(.horizontal, 14)
+                    ProposalCardView(
+                        proposal: proposal,
+                        onSelectName: { selectedName, selectedDest in
+                            var updated = proposal
+                            updated.proposed_filename = selectedName
+                            updated.proposed_destination = selectedDest
+                            if currentIndex < proposals.count {
+                                proposals[currentIndex] = updated
+                            }
+                        }
+                    )
+                    .padding(.horizontal, 14)
 
                     // Secondary Quick Actions
                     HStack(spacing: 8) {
@@ -113,7 +124,7 @@ public struct MenuBarPopoverView: View {
                     Divider()
 
                     // Primary Actions Bar
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         // Previous / Next Buttons
                         HStack(spacing: 4) {
                             Button(action: prevProposal) {
@@ -126,6 +137,23 @@ public struct MenuBarPopoverView: View {
                             }
                             .disabled(proposals.count <= 1)
                         }
+
+                        // AI Enhancement / Ask AI button
+                        Button(action: {
+                            Task { await enhanceCurrentWithAI() }
+                        }) {
+                            HStack(spacing: 4) {
+                                if isEnhancingWithAI {
+                                    ProgressView()
+                                        .scaleEffect(0.6)
+                                } else {
+                                    Image(systemName: "sparkles")
+                                }
+                                Text("Ask AI")
+                            }
+                        }
+                        .disabled(isEnhancingWithAI)
+                        .foregroundColor(.purple)
 
                         Button("Edit (E)") {
                             editFilename = proposal.proposed_filename
@@ -178,7 +206,7 @@ public struct MenuBarPopoverView: View {
             refreshData()
         }
         .onReceive(timer) { _ in
-            if !isEditing {
+            if !isEditing && !isEnhancingWithAI {
                 refreshDataSilently()
             }
         }
@@ -213,6 +241,27 @@ public struct MenuBarPopoverView: View {
                         self.currentIndex = max(0, items.count - 1)
                     }
                 }
+            }
+        }
+    }
+
+    private func enhanceCurrentWithAI() async {
+        guard let p = currentProposal else { return }
+        isEnhancingWithAI = true
+        statusMessage = "Calling AI model..."
+        do {
+            let updated = try await CuratorService.shared.enhanceWithAI(id: p.id)
+            await MainActor.run {
+                if self.currentIndex < self.proposals.count {
+                    self.proposals[self.currentIndex] = updated
+                }
+                self.isEnhancingWithAI = false
+                self.statusMessage = "AI suggestion ready for comparison"
+            }
+        } catch {
+            await MainActor.run {
+                self.isEnhancingWithAI = false
+                self.statusMessage = "AI request failed: \(error.localizedDescription)"
             }
         }
     }

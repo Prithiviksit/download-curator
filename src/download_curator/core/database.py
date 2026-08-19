@@ -108,6 +108,20 @@ class CuratorDatabase:
                     """
                 )
 
+                # Migrate comparison columns if they do not exist yet
+                for col_name, col_type in [
+                    ("rule_based_filename", "TEXT"),
+                    ("rule_based_destination", "TEXT"),
+                    ("ai_filename", "TEXT"),
+                    ("ai_destination", "TEXT"),
+                    ("ai_reason", "TEXT"),
+                    ("ai_confidence", "REAL"),
+                ]:
+                    try:
+                        conn.execute(f"ALTER TABLE proposals ADD COLUMN {col_name} {col_type};")
+                    except Exception:
+                        pass
+
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS audit_log (
@@ -147,6 +161,7 @@ class CuratorDatabase:
             except Exception:
                 pass
 
+        keys = row.keys()
         return Proposal(
             id=row["id"],
             file_hash=row["file_hash"],
@@ -157,6 +172,12 @@ class CuratorDatabase:
             category=row["category"],
             confidence=row["confidence"],
             reason=row["reason"],
+            rule_based_filename=row["rule_based_filename"] if "rule_based_filename" in keys else None,
+            rule_based_destination=row["rule_based_destination"] if "rule_based_destination" in keys else None,
+            ai_filename=row["ai_filename"] if "ai_filename" in keys else None,
+            ai_destination=row["ai_destination"] if "ai_destination" in keys else None,
+            ai_reason=row["ai_reason"] if "ai_reason" in keys else None,
+            ai_confidence=row["ai_confidence"] if "ai_confidence" in keys else None,
             extracted_metadata=metadata,
             status=ProposalStatus(row["status"]),
             created_at=datetime.fromisoformat(row["created_at"]),
@@ -180,22 +201,54 @@ class CuratorDatabase:
                     else None
                 )
 
-                existing = conn.execute(
-                    "SELECT id, status FROM proposals WHERE file_hash = ? ORDER BY id DESC LIMIT 1;",
-                    (proposal.file_hash,),
-                ).fetchone()
+                if proposal.id:
+                    # Update existing proposal by ID
+                    conn.execute(
+                        """
+                        UPDATE proposals SET
+                            proposed_filename = ?,
+                            proposed_destination = ?,
+                            category = ?,
+                            confidence = ?,
+                            reason = ?,
+                            rule_based_filename = ?,
+                            rule_based_destination = ?,
+                            ai_filename = ?,
+                            ai_destination = ?,
+                            ai_reason = ?,
+                            ai_confidence = ?,
+                            extracted_metadata = ?,
+                            status = ?,
+                            updated_at = ?,
+                            executed_at = ?,
+                            executed_path = ?
+                        WHERE id = ?;
+                        """,
+                        (
+                            proposal.proposed_filename,
+                            proposal.proposed_destination,
+                            proposal.category,
+                            proposal.confidence,
+                            proposal.reason,
+                            proposal.rule_based_filename,
+                            proposal.rule_based_destination,
+                            proposal.ai_filename,
+                            proposal.ai_destination,
+                            proposal.ai_reason,
+                            proposal.ai_confidence,
+                            metadata_json,
+                            proposal.status.value,
+                            now_iso,
+                            proposal.executed_at.isoformat() if proposal.executed_at else None,
+                            proposal.executed_path,
+                            proposal.id,
+                        ),
+                    )
+                    return proposal
 
-                if existing:
-                    existing_id = existing["id"]
-                    existing_status = existing["status"]
-
-                    # If already executed or ignored, don't overwrite with pending
-                    if existing_status in (
-                        ProposalStatus.EXECUTED.value,
-                        ProposalStatus.IGNORED.value,
-                    ):
-                        return self.get_proposal_by_id(existing_id)  # type: ignore
-
+                # Check if pending proposal with same file_hash already exists
+                existing = self.get_proposal_by_hash(proposal.file_hash)
+                if existing and existing.status == ProposalStatus.PENDING:
                     conn.execute(
                         """
                         UPDATE proposals SET
@@ -205,6 +258,12 @@ class CuratorDatabase:
                             category = ?,
                             confidence = ?,
                             reason = ?,
+                            rule_based_filename = ?,
+                            rule_based_destination = ?,
+                            ai_filename = ?,
+                            ai_destination = ?,
+                            ai_reason = ?,
+                            ai_confidence = ?,
                             extracted_metadata = ?,
                             updated_at = ?
                         WHERE id = ?;
@@ -216,58 +275,67 @@ class CuratorDatabase:
                             proposal.category,
                             proposal.confidence,
                             proposal.reason,
+                            proposal.rule_based_filename,
+                            proposal.rule_based_destination,
+                            proposal.ai_filename,
+                            proposal.ai_destination,
+                            proposal.ai_reason,
+                            proposal.ai_confidence,
                             metadata_json,
                             now_iso,
-                            existing_id,
+                            existing.id,
                         ),
                     )
-                    proposal.id = existing_id
-                    proposal.updated_at = datetime.fromisoformat(now_iso)
-                else:
-                    cursor = conn.execute(
-                        """
-                        INSERT INTO proposals (
-                            file_hash, current_path, original_path,
-                            proposed_filename, proposed_destination, category,
-                            confidence, reason, extracted_metadata,
-                            status, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                        """,
-                        (
-                            proposal.file_hash,
-                            proposal.current_path,
-                            proposal.original_path,
-                            proposal.proposed_filename,
-                            proposal.proposed_destination,
-                            proposal.category,
-                            proposal.confidence,
-                            proposal.reason,
-                            metadata_json,
-                            proposal.status.value,
-                            now_iso,
-                            now_iso,
-                        ),
-                    )
-                    proposal.id = cursor.lastrowid
-                    proposal.created_at = datetime.fromisoformat(now_iso)
-                    proposal.updated_at = datetime.fromisoformat(now_iso)
+                    proposal.id = existing.id
+                    return proposal
 
-                    self.record_audit(
-                        AuditRecord(
-                            proposal_id=proposal.id,
-                            action=AuditAction.PROPOSED,
-                            source_path=proposal.current_path,
-                            destination_path=None,
-                            details={
-                                "proposed_filename": proposal.proposed_filename,
-                                "proposed_destination": proposal.proposed_destination,
-                                "category": proposal.category,
-                                "confidence": proposal.confidence,
-                                "reason": proposal.reason,
-                            },
-                        )
+                cursor = conn.execute(
+                    """
+                    INSERT INTO proposals (
+                        file_hash, current_path, original_path,
+                        proposed_filename, proposed_destination, category,
+                        confidence, reason, rule_based_filename, rule_based_destination,
+                        ai_filename, ai_destination, ai_reason, ai_confidence,
+                        extracted_metadata, status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        proposal.file_hash,
+                        proposal.current_path,
+                        proposal.original_path,
+                        proposal.proposed_filename,
+                        proposal.proposed_destination,
+                        proposal.category,
+                        proposal.confidence,
+                        proposal.reason,
+                        proposal.rule_based_filename,
+                        proposal.rule_based_destination,
+                        proposal.ai_filename,
+                        proposal.ai_destination,
+                        proposal.ai_reason,
+                        proposal.ai_confidence,
+                        metadata_json,
+                        proposal.status.value,
+                        now_iso,
+                        now_iso,
+                    ),
+                )
+                proposal.id = cursor.lastrowid
+                self.record_audit(
+                    AuditRecord(
+                        proposal_id=proposal.id,
+                        action=AuditAction.PROPOSED,
+                        source_path=proposal.current_path,
+                        destination_path=None,
+                        details={
+                            "proposed_filename": proposal.proposed_filename,
+                            "proposed_destination": proposal.proposed_destination,
+                            "category": proposal.category,
+                            "confidence": proposal.confidence,
+                            "reason": proposal.reason,
+                        },
                     )
-
+                )
                 return proposal
 
     def get_proposal_by_id(self, proposal_id: int) -> Optional[Proposal]:
