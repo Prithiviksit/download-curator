@@ -194,7 +194,17 @@ class CuratorEngine:
         if not metadata:
             metadata = ExtractedMetadata()
 
-        # Run AI provider
+        # Always generate rule-based proposal for comparison baseline
+        from download_curator.ai.rule_based import RuleBasedProvider
+        rule_res = RuleBasedProvider().generate_proposal(file_path, metadata, self.config)
+        safe_rule_name = sanitize_filename(
+            rule_res.suggested_filename,
+            max_length=self.config.safety.max_filename_length,
+        )
+        proposal.rule_based_filename = safe_rule_name
+        proposal.rule_based_destination = rule_res.destination
+
+        # Run configured AI provider
         ai_res = self.ai_provider.generate_proposal(file_path, metadata, self.config)
         safe_ai_name = sanitize_filename(
             ai_res.suggested_filename,
@@ -205,10 +215,6 @@ class CuratorEngine:
         proposal.ai_destination = ai_res.destination
         proposal.ai_reason = ai_res.reason
         proposal.ai_confidence = ai_res.confidence
-
-        if not proposal.rule_based_filename:
-            proposal.rule_based_filename = proposal.proposed_filename
-            proposal.rule_based_destination = proposal.proposed_destination
 
         updated = self.db.add_or_update_proposal(proposal)
         return updated

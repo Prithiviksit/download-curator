@@ -52,12 +52,22 @@ public struct ProposalCardView: View {
                     .foregroundColor(.accentColor)
             }
 
-            // Comparison Pills if AI comparison is available
-            if let aiName = proposal.ai_filename, let ruleName = proposal.rule_based_filename ?? Optional(proposal.proposed_filename), aiName != ruleName {
+            // Comparison Section if AI comparison is available
+            if let aiName = proposal.ai_filename {
+                let ruleName = proposal.rule_based_filename ?? proposal.proposed_filename
+                let isMatch = (aiName == ruleName)
+
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("COMPARE PROPOSALS")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
+                    HStack {
+                        Text("COMPARE PROPOSALS")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                        if isMatch {
+                            Text("• Both Engines Agree")
+                                .font(.caption2.bold())
+                                .foregroundColor(.green)
+                        }
+                    }
 
                     // Rule-Based option
                     Button(action: {
@@ -77,7 +87,7 @@ public struct ProposalCardView: View {
                             Spacer()
                         }
                         .padding(6)
-                        .background(proposal.proposed_filename == ruleName ? Color.blue.opacity(0.1) : Color.clear)
+                        .background(proposal.proposed_filename == ruleName ? Color.blue.opacity(0.12) : Color.clear)
                         .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
@@ -108,7 +118,7 @@ public struct ProposalCardView: View {
                             Spacer()
                         }
                         .padding(6)
-                        .background(proposal.proposed_filename == aiName ? Color.purple.opacity(0.1) : Color.clear)
+                        .background(proposal.proposed_filename == aiName ? Color.purple.opacity(0.12) : Color.clear)
                         .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
