@@ -46,3 +46,8 @@ cat <<EOF > "$CONTENTS_DIR/Info.plist"
 EOF
 
 echo "✓ Build successful! App bundle created at: $APP_DIR"
+
+# Cleanly install to /Applications
+rm -rf "/Applications/$APP_NAME"
+cp -R "$APP_DIR" "/Applications/$APP_NAME"
+echo "✓ Installed to /Applications/$APP_NAME"
