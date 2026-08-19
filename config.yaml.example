@@ -1,0 +1,98 @@
+# download-curator configuration
+# Copy to ~/.download-curator/config.yaml or pass via --config
+
+# Source directory to monitor for new downloads
+watch_directory: ~/Downloads
+
+# Destination root directory where category subfolders will be placed
+destination_root: ~/Downloads
+
+# Path to SQLite database
+database_path: ~/.download-curator/curator.db
+
+# Category folders (relative to destination_root)
+categories:
+  Academic Papers: "Academic Papers"
+  Books: "Books"
+  Slides: "Presentations"
+  Invoices & Receipts: "Financial/Invoices"
+  Financial Statements: "Financial/Statements"
+  Datasets: "Datasets"
+  Installers: "Installers"
+  Images: "Images"
+  Archives: "Archives"
+  Code & Scripts: "Code"
+  Documents: "Documents"
+  Spreadsheets: "Spreadsheets"
+  Audio & Video: "Media"
+  Unclassified: "Unclassified"
+
+# Naming template rules for deterministic classification
+naming_rules:
+  academic_papers: "{authors}_{year}_{short_title}.{ext}"
+  books: "{authors}_{year}_{title}.{ext}"
+  slides: "{topic_or_title}.{ext}"
+  invoices: "{merchant}_{date}_{description}.{ext}"
+  statements: "{institution}_{date}_Statement.{ext}"
+  installers: "{app_name}_{version}_{arch}.{ext}"
+  datasets: "{dataset_name}_{version}_{date}.{ext}"
+
+# Ignore settings
+ignore:
+  extensions:
+    - .crdownload
+    - .part
+    - .download
+    - .tmp
+    - .swp
+    - .lock
+    - .DS_Store
+  patterns:
+    - ".*"
+    - "~$*"
+    - "*.tmp"
+    - "*.crdownload"
+    - "*.part"
+    - "*.download"
+  directories:
+    - ".*"
+    - "Organized"
+    - "Academic Papers"
+    - "Books"
+    - "Presentations"
+    - "Financial"
+    - "Datasets"
+    - "Installers"
+    - "Images"
+    - "Archives"
+    - "Code"
+    - "Documents"
+    - "Spreadsheets"
+    - "Media"
+    - "Unclassified"
+
+# AI Provider Settings
+# Options: rule_based (default, no API key needed), gemini, openai, anthropic, ollama
+ai:
+  provider: rule_based
+  api_key: null
+  model: null
+  confidence_threshold: 0.7
+
+# Safety Settings
+safety:
+  allowed_source_directories:
+    - ~/Downloads
+  allowed_destination_roots:
+    - ~/Downloads
+    - ~/Documents
+  collision_strategy: rename_increment  # rename_increment or abort
+  preserve_metadata: true
+  atomic_moves: true
+  max_filename_length: 200
+
+# Background Server & Menubar Settings
+server:
+  host: 127.0.0.1
+  port: 58291
+  poll_interval_seconds: 2.0
